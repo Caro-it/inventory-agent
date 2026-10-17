@@ -1,7 +1,8 @@
 id,name,quantity,unit
-1,Café arábica en grano,25,bolsas
-2,Leche de avena,8,unidades
-3,Leche entera,40,litros
+1,Café arábica en grano,25.0,bolsas
+2,Leche de avena,38.0,unidades
+3,Leche entera,40.0,litros
 4,Azúcar,12.5,kg
-5,Vasos de cartón 8oz,300,unidades
-6,Tapas para vasos,5,unidades
+5,Vasos de cartón 8oz,300.0,unidades
+6,Tapas para vasos,5.0,unidades
+7,Canela molida,3.0,kg
