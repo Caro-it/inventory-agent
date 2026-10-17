@@ -1,5 +1,6 @@
 import csv
 from pathlib import Path
+from fastapi import FastAPI, Query
 
 # ---------- Configuración ----------
 BASE_DIR = Path(__file__).resolve().parent.parent  # raíz del proyecto
@@ -50,3 +51,34 @@ def save_products(products: list[dict]) -> None:
 def next_id(products: list[dict]) -> int:
     """Devuelve el siguiente id libre."""
     return max((p["id"] for p in products), default=0) + 1
+
+# ---------- API ----------
+DEFAULT_ALERT_THRESHOLD = 10
+
+app = FastAPI(
+    title="Inventario de Carla",
+    description="API de inventario para la tienda de suministros de cafetería",
+)
+
+
+@app.get("/inventory")
+def get_inventory():
+    """Devuelve la lista completa de productos."""
+    return load_products()
+
+
+@app.get("/inventory/alerts")
+def get_alerts(
+    threshold: float = Query(
+        DEFAULT_ALERT_THRESHOLD,
+        ge=0,
+        description="Umbral de stock bajo (por defecto 10)",
+    ),
+):
+    """Devuelve los productos cuya cantidad está por debajo del umbral."""
+    low_stock = [p for p in load_products() if p["quantity"] < threshold]
+    return {
+        "threshold": threshold,
+        "count": len(low_stock),
+        "products": low_stock,
+    }
