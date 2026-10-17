@@ -1,0 +1,25 @@
+actor,message,tool_call,timestamp
+user,acaban de llegar 30 unidades de leche de avena,,2026-10-17T22:45:24+02:00
+agent,{},get_inventory,2026-10-17T22:45:24+02:00
+tool,"[{""name"": ""Café arábica en grano"", ""quantity"": 25.0, ""unit"": ""bolsas"", ""id"": 1}, {""name"": ""Leche de avena"", ""quantity"": 38.0, ""unit"": ""unidades"", ""id"": 2}, {""name"": ""Leche entera"", ""quantity"": 40.0, ""unit"": ""litros"", ""id"": 3}, {""name"": ""Azúcar"", ""quantity"": 12.5, ""unit"": ""kg"", ""id"": 4}, {""name"": ""Vasos de cartón 8oz"", ""quantity"": 300.0, ""unit"": ""unidades"", ""id"": 5}, {""name"": ""Tapas para vasos"", ""quantity"": 25.0, ""unit"": ""unidades"", ""id"": 6}, {""name"": ""Canela molida"", ""quantity"": 3.0, ""unit"": ""kg"", ""id"": 7}]",get_inventory,2026-10-17T22:45:25+02:00
+agent,"{""delta"":30,""product_id"":2}",update_stock,2026-10-17T22:45:25+02:00
+tool,"{""name"": ""Leche de avena"", ""quantity"": 68.0, ""unit"": ""unidades"", ""id"": 2}",update_stock,2026-10-17T22:45:25+02:00
+agent,¡Listo! La leche de avena ahora tiene **68 unidades** en stock.,,2026-10-17T22:45:26+02:00
+user,¿qué productos están por agotarse?,,2026-10-17T22:45:32+02:00
+agent,{},get_low_stock_alerts,2026-10-17T22:45:32+02:00
+tool,"{""threshold"": 10.0, ""count"": 1, ""products"": [{""name"": ""Canela molida"", ""quantity"": 3.0, ""unit"": ""kg"", ""id"": 7}]}",get_low_stock_alerts,2026-10-17T22:45:33+02:00
+agent,"Los productos que están por agotarse (menos de 10 unidades) son:
+
+- **Canela molida**: 3 kg.",,2026-10-17T22:45:33+02:00
+user,vendimos 12 bolsas de arábica hoy,,2026-10-17T22:45:38+02:00
+agent,"{""delta"":-12,""product_id"":1}",update_stock,2026-10-17T22:45:38+02:00
+tool,"{""name"": ""Café arábica en grano"", ""quantity"": 13.0, ""unit"": ""bolsas"", ""id"": 1}",update_stock,2026-10-17T22:45:38+02:00
+agent,He registrado la venta: ahora tienes **13 bolsas** de café arábico en grano.,,2026-10-17T22:45:38+02:00
+user,¿y cuánto me queda de eso?,,2026-10-17T22:45:45+02:00
+agent,Te quedan **13 bolsas** de café arábica en grano.,,2026-10-17T22:45:46+02:00
+user,llegaron 5 kg de cacao en polvo,,2026-10-17T22:45:52+02:00
+agent,{},get_inventory,2026-10-17T22:45:52+02:00
+tool,"[{""name"": ""Café arábica en grano"", ""quantity"": 13.0, ""unit"": ""bolsas"", ""id"": 1}, {""name"": ""Leche de avena"", ""quantity"": 68.0, ""unit"": ""unidades"", ""id"": 2}, {""name"": ""Leche entera"", ""quantity"": 40.0, ""unit"": ""litros"", ""id"": 3}, {""name"": ""Azúcar"", ""quantity"": 12.5, ""unit"": ""kg"", ""id"": 4}, {""name"": ""Vasos de cartón 8oz"", ""quantity"": 300.0, ""unit"": ""unidades"", ""id"": 5}, {""name"": ""Tapas para vasos"", ""quantity"": 25.0, ""unit"": ""unidades"", ""id"": 6}, {""name"": ""Canela molida"", ""quantity"": 3.0, ""unit"": ""kg"", ""id"": 7}]",get_inventory,2026-10-17T22:45:52+02:00
+agent,"No tengo registrado todavía el **cacao en polvo** en el inventario. 
+
+¿Quieres darlo de alta? Si es así, indícame la unidad de medida que prefieres (por ejemplo, kg, bolsas, unidades, etc.) y, opcionalmente, la cantidad inicial que ya tienes.",,2026-10-17T22:45:52+02:00

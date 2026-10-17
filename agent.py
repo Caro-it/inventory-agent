@@ -1,6 +1,7 @@
 import csv
 import json
 import os
+import httpx
 from datetime import datetime
 from pathlib import Path
 
@@ -41,7 +42,6 @@ def log_event(actor: str, message: str, tool_call: str | None = None) -> None:
         )
 
 
-# ---------- System prompt ----------
 SYSTEM_PROMPT = """Eres el asistente de inventario de una tienda familiar de suministros para cafeterías.
 Hablas con Carla, la dueña, que te cuenta entregas, ventas y te hace preguntas sobre el stock.
 
@@ -51,7 +51,8 @@ Reglas:
 - Entregas o llegadas de mercancía = delta POSITIVO. Ventas, consumos o salidas = delta NEGATIVO.
 - Si Carla menciona un producto que no existe en el inventario, pregúntale si quiere darlo de alta y en qué unidad, antes de crearlo.
 - Si una herramienta devuelve un error, explícaselo a Carla con palabras sencillas.
-- Responde en español, de forma breve y natural, incluyendo siempre cantidades y unidades."""
+- Responde en español, de forma breve y natural, incluyendo siempre cantidades y unidades.
+- Responde en texto plano, sin formato Markdown (sin asteriscos ni almohadillas)."""
 
 # ---------- Definición de tools ----------
 TOOLS = [
@@ -113,19 +114,152 @@ TOOLS = [
         },
     },
 ]
+# ---------- Dispatcher: ejecuta la tool llamando a la API ----------
+def execute_tool(name: str, args: dict) -> str:
+    """Llama al endpoint correspondiente y devuelve el resultado como string JSON."""
+    try:
+        if name == "get_inventory":
+            response = httpx.get(f"{API_URL}/inventory", timeout=10)
+
+        elif name == "add_product":
+            body = {"name": args["name"], "quantity": args["quantity"], "unit": args["unit"]}
+            response = httpx.post(f"{API_URL}/inventory", json=body, timeout=10)
+
+        elif name == "update_stock":
+            response = httpx.patch(
+                f"{API_URL}/inventory/{args['product_id']}",
+                json={"delta": args["delta"]},
+                timeout=10,
+            )
+
+        elif name == "get_low_stock_alerts":
+            params = {}
+            if args.get("threshold") is not None:
+                params["threshold"] = args["threshold"]
+            response = httpx.get(f"{API_URL}/inventory/alerts", params=params, timeout=10)
+
+        else:
+            return json.dumps({"error": f"Tool desconocida: {name}"}, ensure_ascii=False)
+
+    except httpx.ConnectError:
+        return json.dumps(
+            {"error": "No se puede conectar con la API de inventario. ¿Está arrancada?"},
+            ensure_ascii=False,
+        )
+    except KeyError as missing:
+        return json.dumps({"error": f"Falta el parámetro {missing}"}, ensure_ascii=False)
+
+    # Respuesta de la API: éxito o error HTTP
+    try:
+        data = response.json()
+    except ValueError:
+        data = {"raw": response.text}
+
+    if response.is_error:
+        detail = data.get("detail", data) if isinstance(data, dict) else data
+        return json.dumps({"error": detail, "status_code": response.status_code}, ensure_ascii=False)
+
+    return json.dumps(data, ensure_ascii=False)
+
+# ---------- Bucle del agente ----------
+MAX_ITERATIONS = 10  # freno de seguridad por si el modelo encadena tools sin parar
+
+
+def run_agent_turn(messages: list[dict]) -> str:
+    """Ejecuta el bucle Pensar → Actuar → Actualizar → Repetir para un mensaje de Carla."""
+    for _ in range(MAX_ITERATIONS):
+        # PENSAR: enviar todo el historial + las tools al LLM
+        response = client.chat.completions.create(
+            model=MODEL,
+            messages=messages,
+            tools=TOOLS,
+        )
+        msg = response.choices[0].message
+
+        # FIN: respuesta final sin tools pendientes
+        if not msg.tool_calls:
+            final_answer = msg.content or ""
+            messages.append({"role": "assistant", "content": final_answer})
+            log_event("agent", final_answer)
+            return final_answer
+
+        # Guardar la decisión del LLM ANTES de los resultados (regla 1 de la traza)
+        messages.append(
+            {
+                "role": "assistant",
+                "content": msg.content,
+                "tool_calls": [
+                    {
+                        "id": tc.id,
+                        "type": "function",
+                        "function": {"name": tc.function.name, "arguments": tc.function.arguments},
+                    }
+                    for tc in msg.tool_calls
+                ],
+            }
+        )
+
+        # ACTUAR + ACTUALIZAR: ejecutar cada tool pedida e inyectar su resultado
+        for tc in msg.tool_calls:
+            tool_name = tc.function.name
+            log_event("agent", tc.function.arguments or "{}", tool_name)
+
+            try:
+                args = json.loads(tc.function.arguments or "{}")
+                result = execute_tool(tool_name, args)
+            except json.JSONDecodeError:
+                result = json.dumps({"error": "Argumentos no válidos (JSON mal formado)"}, ensure_ascii=False)
+
+            log_event("tool", result, tool_name)
+            messages.append(
+                {
+                    "role": "tool",
+                    "tool_call_id": tc.id,  # regla 2 de la traza
+                    "content": result,
+                }
+            )
+        # REPETIR: vuelve al principio del for con el historial actualizado
+
+    # Regla 3: límite alcanzado
+    fallback = "Lo siento, no he podido completar la petición. ¿Puedes reformularla?"
+    messages.append({"role": "assistant", "content": fallback})
+    log_event("agent", fallback)
+    return fallback
+
+
+# ---------- CLI ----------
+def main() -> None:
+    print("Asistente de inventario. Escribe 'salir' para terminar.\n")
+    messages: list[dict] = [{"role": "system", "content": SYSTEM_PROMPT}]
+
+    while True:
+        # OBSERVAR: leer el input de Carla
+        try:
+            user_input = input("Carla > ").strip()
+        except (KeyboardInterrupt, EOFError):
+            print("\nHasta luego.")
+            break
+
+        if not user_input:
+            continue
+        if user_input.lower() in {"salir", "exit", "quit"}:
+            print("Hasta luego.")
+            break
+
+        checkpoint = len(messages)  # para deshacer el turno si algo falla a medias
+        log_event("user", user_input)
+        messages.append({"role": "user", "content": user_input})
+
+        try:
+            answer = run_agent_turn(messages)
+        except Exception as error:  # fallo de red o del LLM
+            del messages[checkpoint:]  # evita dejar un historial inconsistente
+            answer = f"Ha habido un problema al contactar con el modelo: {error}"
+            log_event("agent", answer)
+
+        print(f"Agente > {answer}\n")
 
 
 if __name__ == "__main__":
-    # Prueba temporal: comprobar que el modelo elige una tool (se quita en el paso 9)
-    response = client.chat.completions.create(
-        model=MODEL,
-        messages=[
-            {"role": "system", "content": SYSTEM_PROMPT},
-            {"role": "user", "content": "¿Qué productos están por agotarse?"},
-        ],
-        tools=TOOLS,
-    )
-    msg = response.choices[0].message
-    print("content:", msg.content)
-    for tc in msg.tool_calls or []:
-        print("tool:", tc.function.name, "| args:", tc.function.arguments)
+    main()
+    
